@@ -4,11 +4,14 @@ import android.annotation.SuppressLint;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.Gravity;
@@ -33,6 +36,7 @@ import android.widget.Toast;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
@@ -40,6 +44,8 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TARGET_URL = "https://www.commerce-dz.com/login.php";
     private static final String HOST = "commerce-dz.com";
+    // أقل إصدار WebView نعتبره مناسباً لمواقع اليوم (الأقدم قد تتعطل فيه أزرار القوائم)
+    private static final int MIN_WEBVIEW_MAJOR = 90;
 
     private WebView webView;
     private SwipeRefreshLayout swipe;
@@ -132,6 +138,13 @@ public class MainActivity extends AppCompatActivity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri uri = req.getUrl();
                 String scheme = uri.getScheme();
+                if (scheme == null) return false;
+                scheme = scheme.toLowerCase();
+                // روابط داخلية تخص الصفحة نفسها (مثل أزرار القوائم javascript:) نتركها للمتصفح
+                if (scheme.equals("javascript") || scheme.equals("about")
+                        || scheme.equals("data") || scheme.equals("blob")) {
+                    return false;
+                }
                 if ("http".equals(scheme) || "https".equals(scheme)) {
                     String host = uri.getHost();
                     if (host != null && (host.equals(HOST) || host.endsWith("." + HOST))) {
@@ -177,10 +190,43 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // فحص الصفحة من الكمبيوتر عبر chrome://inspect (نسخة debug فقط)
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
             load();
+            checkWebViewVersion();
+        }
+    }
+
+    // ------------------------------------------------ تنبيه WebView القديم
+    private void checkWebViewVersion() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        try {
+            final PackageInfo pi = WebView.getCurrentWebViewPackage();
+            if (pi == null || pi.versionName == null) return;
+            final int major = Integer.parseInt(pi.versionName.split("\\.")[0]);
+            if (major >= MIN_WEBVIEW_MAJOR) return;
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.webview_old_title)
+                    .setMessage(getString(R.string.webview_old_msg, major))
+                    .setPositiveButton(R.string.update_now, (d, w) -> openPlayStore(pi.packageName))
+                    .setNegativeButton(R.string.later, null)
+                    .show();
+        } catch (Exception ignored) {
+            // لا نزعج المستخدم إذا تعذر الفحص
+        }
+    }
+
+    private void openPlayStore(String pkg) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg)));
+        } catch (Exception e) {
+            openExternally(Uri.parse("https://play.google.com/store/apps/details?id=" + pkg));
         }
     }
 
