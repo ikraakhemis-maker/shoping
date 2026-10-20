@@ -38,7 +38,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String TARGET_URL = "https://www.commerce-dz.com/login.php";
+    private static final String TARGET_URL = "https://www.commerce-dz.com/";
     private static final String HOST = "commerce-dz.com";
 
     private WebView webView;
